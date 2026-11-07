@@ -1,0 +1,19 @@
+# ── core (required) ───────────────────────────────────────────────────────────
+torch
+torchvision
+opencv-python
+numpy
+scikit-learn
+tqdm
+
+# ── optional extras ───────────────────────────────────────────────────────────
+# Phase 2  — better face detection (uncomment one)
+# facenet-pytorch     # MTCNN  (USE_MTCNN = True)
+# mediapipe           # MediaPipe face detection (USE_MEDIAPIPE = True)
+
+# Phase 10 — confusion matrix plot
+matplotlib
+
+# Phase 11 — Gradio demo app
+# gradio
+

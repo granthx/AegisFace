@@ -1,0 +1,11 @@
+{
+  "name": "aegisface-forensics",
+  "version": "1.0.0",
+  "description": "AegisFace Forensics — End-to-end PyTorch deepfake detection pipeline featuring fine-tuned EfficientNet-B0 backbone, 30% facial boundary margin extraction, and Grad-CAM spatial explainability.",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend"
+  }
+}
+

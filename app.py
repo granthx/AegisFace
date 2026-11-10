@@ -4,6 +4,20 @@ import json
 import base64
 import tempfile
 from pathlib import Path
+
+# Hugging Face ZeroGPU support - must be imported BEFORE torch
+try:
+    import spaces
+    HAS_SPACES = True
+except ImportError:
+    HAS_SPACES = False
+    class spaces:
+        @staticmethod
+        def GPU(fn=None, **kwargs):
+            if fn is None:
+                return lambda f: f
+            return fn
+
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
@@ -229,6 +243,7 @@ class PredictRequest(BaseModel):
     image: Optional[str] = None
 
 # ── GRADIO UI INTERFACE ──────────────────────────────────────────────────────
+@spaces.GPU
 def gradio_predict(img):
     if img is None:
         return "No image provided", None
@@ -282,7 +297,8 @@ def health():
     }
 
 @app.post("/api/predict")
-async def predict(req: PredictRequest):
+@spaces.GPU
+def predict(req: PredictRequest):
     if not req.image:
         raise HTTPException(status_code=400, detail="No image provided")
     b64_str = req.image.split(",")[-1]
@@ -293,8 +309,9 @@ async def predict(req: PredictRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/extract-video")
-async def extract_video(file: UploadFile = File(...)):
-    video_bytes = await file.read()
+@spaces.GPU
+def extract_video(file: UploadFile = File(...)):
+    video_bytes = file.file.read()
     try:
         return run_video_extraction(video_bytes)
     except Exception as e:

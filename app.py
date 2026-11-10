@@ -281,7 +281,7 @@ async def extract_video(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── GRADIO UI WRAPPER (FOR HUGGING FACE GRADIO SPACES) ───────────────────────
+# ── GRADIO UI WRAPPER & RUNNER ───────────────────────────────────────────────
 import gradio as gr
 
 def gradio_predict(img):
@@ -312,11 +312,10 @@ demo = gr.Interface(
     description="Fine-tuned EfficientNet-B0 with +30% facial boundary margin extraction and Grad-CAM spatial explainability. Also exposes standard REST API at /api/predict and /api/health for Cloudflare Pages.",
 )
 
-# Mount Gradio onto the root of FastAPI
+# Mount Gradio onto FastAPI root so both Gradio and /api/predict coexist
 app = gr.mount_gradio_app(app, demo, path="/")
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    demo.launch(server_name="0.0.0.0", server_port=7860, app=app)
+
 

@@ -9,25 +9,10 @@ import torch.nn as nn
 from torchvision import models, transforms
 import cv2
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-
-# ── INITIALIZE FASTAPI APP ───────────────────────────────────────────────────
-app = FastAPI(
-    title="AegisFace Forensics API",
-    description="End-to-end PyTorch Deepfake Detection API with Grad-CAM Explainability",
-    version="1.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+import gradio as gr
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 WEIGHTS_PATH = Path("deepfake_effnetb0_best.pt")
@@ -243,15 +228,49 @@ def run_video_extraction(video_bytes: bytes, n_frames: int = 16):
 class PredictRequest(BaseModel):
     image: Optional[str] = None
 
-# ── FASTAPI ROUTES ───────────────────────────────────────────────────────────
-@app.get("/")
-def root():
-    return {
-        "app": "AegisFace Forensics API",
-        "status": "healthy",
-        "model": "EfficientNet-B0",
-        "docs": "/docs"
-    }
+# ── GRADIO UI INTERFACE ──────────────────────────────────────────────────────
+def gradio_predict(img):
+    if img is None:
+        return "No image provided", None
+    is_success, buffer = cv2.imencode(".jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+    if not is_success:
+        return "Image encode error", None
+    result = run_image_inference(buffer.tobytes())
+    verdict = f"{result['verdict']}\nConfidence: {result['confidence_pct']}%\nP(Fake): {result['fake_probability']:.4f}\nMargin: {result['margin']}"
+    
+    heatmap_img = None
+    if result.get("gradcam_heatmap"):
+        header, encoded = result["gradcam_heatmap"].split(",", 1)
+        raw_bytes = base64.b64decode(encoded)
+        nparr = np.frombuffer(raw_bytes, np.uint8)
+        heatmap_img = cv2.cvtColor(cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGRA2RGBA)
+    return verdict, heatmap_img
+
+demo = gr.Interface(
+    fn=gradio_predict,
+    inputs=gr.Image(type="numpy", label="Upload Suspect Face Image"),
+    outputs=[
+        gr.Textbox(label="AegisFace Forensic Verdict & Metrics"),
+        gr.Image(label="Grad-CAM Thermal Attention Map")
+    ],
+    title="AegisFace Forensics — Neural Deepfake Detection",
+    description="Fine-tuned EfficientNet-B0 with +30% facial boundary margin extraction and Grad-CAM spatial explainability. REST API available at /api/predict and /api/health.",
+)
+
+# ── ATTACH REST ENDPOINTS DIRECTLY TO DEMO.APP (FASTAPI) ─────────────────────
+app = demo.app
+
+@app.middleware("http")
+async def add_cors(request, call_next):
+    if request.method == "OPTIONS":
+        from starlette.responses import Response
+        response = Response(status_code=200)
+    else:
+        response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.get("/api/health")
 def health():
@@ -281,41 +300,5 @@ async def extract_video(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── GRADIO UI WRAPPER & RUNNER ───────────────────────────────────────────────
-import gradio as gr
-
-def gradio_predict(img):
-    if img is None:
-        return "No image provided", None
-    is_success, buffer = cv2.imencode(".jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-    if not is_success:
-        return "Image encode error", None
-    result = run_image_inference(buffer.tobytes())
-    verdict = f"{result['verdict']}\nConfidence: {result['confidence_pct']}%\nP(Fake): {result['fake_probability']:.4f}\nMargin: {result['margin']}"
-    
-    heatmap_img = None
-    if result.get("gradcam_heatmap"):
-        header, encoded = result["gradcam_heatmap"].split(",", 1)
-        raw_bytes = base64.b64decode(encoded)
-        nparr = np.frombuffer(raw_bytes, np.uint8)
-        heatmap_img = cv2.cvtColor(cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGRA2RGBA)
-    return verdict, heatmap_img
-
-demo = gr.Interface(
-    fn=gradio_predict,
-    inputs=gr.Image(type="numpy", label="Upload Suspect Face Image"),
-    outputs=[
-        gr.Textbox(label="AegisFace Forensic Verdict & Metrics"),
-        gr.Image(label="Grad-CAM Thermal Attention Map")
-    ],
-    title="AegisFace Forensics — Neural Deepfake Detection",
-    description="Fine-tuned EfficientNet-B0 with +30% facial boundary margin extraction and Grad-CAM spatial explainability. Also exposes standard REST API at /api/predict and /api/health for Cloudflare Pages.",
-)
-
-# Mount Gradio onto FastAPI root so both Gradio and /api/predict coexist
-app = gr.mount_gradio_app(app, demo, path="/")
-
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, app=app)
-
-
+    demo.launch(server_name="0.0.0.0", server_port=7860)

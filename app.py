@@ -281,7 +281,42 @@ async def extract_video(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── GRADIO UI WRAPPER (FOR HUGGING FACE GRADIO SPACES) ───────────────────────
+import gradio as gr
+
+def gradio_predict(img):
+    if img is None:
+        return "No image provided", None
+    is_success, buffer = cv2.imencode(".jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+    if not is_success:
+        return "Image encode error", None
+    result = run_image_inference(buffer.tobytes())
+    verdict = f"{result['verdict']}\nConfidence: {result['confidence_pct']}%\nP(Fake): {result['fake_probability']:.4f}\nMargin: {result['margin']}"
+    
+    heatmap_img = None
+    if result.get("gradcam_heatmap"):
+        header, encoded = result["gradcam_heatmap"].split(",", 1)
+        raw_bytes = base64.b64decode(encoded)
+        nparr = np.frombuffer(raw_bytes, np.uint8)
+        heatmap_img = cv2.cvtColor(cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGRA2RGBA)
+    return verdict, heatmap_img
+
+demo = gr.Interface(
+    fn=gradio_predict,
+    inputs=gr.Image(type="numpy", label="Upload Suspect Face Image"),
+    outputs=[
+        gr.Textbox(label="AegisFace Forensic Verdict & Metrics"),
+        gr.Image(label="Grad-CAM Thermal Attention Map")
+    ],
+    title="AegisFace Forensics — Neural Deepfake Detection",
+    description="Fine-tuned EfficientNet-B0 with +30% facial boundary margin extraction and Grad-CAM spatial explainability. Also exposes standard REST API at /api/predict and /api/health for Cloudflare Pages.",
+)
+
+# Mount Gradio onto the root of FastAPI
+app = gr.mount_gradio_app(app, demo, path="/")
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 7860))
     uvicorn.run(app, host="0.0.0.0", port=port)
+

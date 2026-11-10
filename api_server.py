@@ -308,11 +308,13 @@ class ForensicHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": str(e)}).encode())
 
-def run_server(port=5000):
+def run_server(port=None):
+    if port is None:
+        port = int(os.environ.get("PORT", 7860))
     server = HTTPServer(("0.0.0.0", port), ForensicHandler)
-    print(f"[API] Server running at http://localhost:{port}")
+    print(f"[API] Server running at http://0.0.0.0:{port}")
     server.serve_forever()
 
 if __name__ == "__main__":
     get_model()
-    run_server(5000)
+    run_server()

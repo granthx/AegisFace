@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { playTactileClick, playGrungeChord } from '../utils/audioSynth';
 import { extractFramesFromVideoFile, generateSampleVideoFrames } from '../utils/videoExtractor';
+import API_BASE_URL from '../config';
 
 export function Hero({ 
   soundEnabled, 
@@ -113,7 +114,7 @@ export function Hero({
         setUploadedImage(dataUrl);
 
         try {
-          const res = await fetch('http://localhost:5000/api/predict', {
+          const res = await fetch(`${API_BASE_URL}/api/predict`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image: dataUrl })
